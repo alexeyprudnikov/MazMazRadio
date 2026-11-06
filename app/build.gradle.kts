@@ -54,9 +54,6 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer-hls:1.3.1")
     implementation("androidx.media3:media3-session:1.3.1")
 
-    // Coil для обложек и логотипов
-    implementation("io.coil-kt:coil-compose:2.6.0")
-
     // Сеть
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")

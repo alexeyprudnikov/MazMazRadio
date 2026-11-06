@@ -1,0 +1,83 @@
+#EXTM3U
+# MazMaz Radio — плейлист, он же единственный источник станций. Правится руками.
+# Категория — group-title, обязан буквально совпадать с константой в data/Categories.kt;
+# порядок строк = порядок показа. Потоки проверены 2026-11-06 (200 audio/*, валидный TLS).
+# Снятые как мёртвые — в docs/dead-streams.md.
+
+# --- Поп и главные эфиры ---
+#EXTINF:-1 group-title="Поп и главные эфиры",Европа Плюс (Москва 128k)
+http://ep128.hostingradio.ru:8030/ep128
+#EXTINF:-1 group-title="Поп и главные эфиры",Европа Плюс (HQ 320k)
+https://europaplus.hostingradio.ru:8014/europaplus320.mp3
+#EXTINF:-1 group-title="Поп и главные эфиры",Русское Радио
+https://rusradio.hostingradio.ru/rusradio128.mp3
+#EXTINF:-1 group-title="Поп и главные эфиры",Дорожное радио
+https://dorognoe.hostingradio.ru/dorognoe
+#EXTINF:-1 group-title="Поп и главные эфиры",Хит FM
+https://dfm.hostingradio.ru/hitfm128.mp3
+#EXTINF:-1 group-title="Поп и главные эфиры",DFM
+https://dfm.hostingradio.ru/dfm128.mp3
+#EXTINF:-1 group-title="Поп и главные эфиры",Радио 7 на семи холмах
+http://emgregion.hostingradio.ru:8064/moscow.radio7.mp3
+#EXTINF:-1 group-title="Поп и главные эфиры",Ретро FM (320k)
+https://europaplus.hostingradio.ru:8014/retro320.mp3
+#EXTINF:-1 group-title="Поп и главные эфиры",Радио Монте-Карло
+https://dfm.hostingradio.ru/montecarlo128.mp3
+
+# --- Рок и альтернатива ---
+#EXTINF:-1 group-title="Рок и альтернатива",НАШЕ Радио
+https://nashe1.hostingradio.ru/nashe-128.mp3
+#EXTINF:-1 group-title="Рок и альтернатива",Радио Maximum
+https://maximum.hostingradio.ru/maximum128.mp3
+#EXTINF:-1 group-title="Рок и альтернатива",Радио Искатель
+http://iskatel.hostingradio.ru:8015/iskatel-128.mp3
+#EXTINF:-1 group-title="Рок и альтернатива",Rock FM
+https://nashe1.hostingradio.ru/rock-128.mp3
+#EXTINF:-1 group-title="Рок и альтернатива",Ultra FM
+https://nashe1.hostingradio.ru/ultra-128.mp3
+
+# --- Дорожное радио · Тематические ---
+#EXTINF:-1 group-title="Дорожное радио · Тематические",Дорожное · Ностальгия
+https://hls-01-dorognoe-nostalgia.emgsound.ru/19/playlist.m3u8
+#EXTINF:-1 group-title="Дорожное радио · Тематические",Дорожное · Танцы по-русски
+https://hls-01-dorognoedancerus.emgsound.ru/50/playlist.m3u8
+#EXTINF:-1 group-title="Дорожное радио · Тематические",Дорожное · Рок-клуб
+https://hls-01-dorognoe-rock.emgsound.ru/18/playlist.m3u8
+
+# --- DFM · Танцы и клуб ---
+#EXTINF:-1 group-title="DFM · Танцы и клуб",DFM · Russian Dance
+https://hls-01-dfm.hostingradio.ru/dfmrusdance/playlist.m3u8
+#EXTINF:-1 group-title="DFM · Танцы и клуб",DFM · Club / House
+https://hls-01-dfm.hostingradio.ru/dfmclub/playlist.m3u8
+#EXTINF:-1 group-title="DFM · Танцы и клуб",DFM · Trap & Hip-Hop
+https://hls-01-dfm.hostingradio.ru/dfmtrap/playlist.m3u8
+#EXTINF:-1 group-title="DFM · Танцы и клуб",DFM · Deep House
+https://hls-01-dfm.hostingradio.ru/dfmdeep/playlist.m3u8
+#EXTINF:-1 group-title="DFM · Танцы и клуб",DFM · Disco 90x
+https://hls-01-dfm.hostingradio.ru/disc90/playlist.m3u8
+
+# --- Джаз, классика и релакс ---
+#EXTINF:-1 group-title="Джаз, классика и релакс",Радио JAZZ (Москва)
+https://nashe1.hostingradio.ru/jazz-128.mp3
+#EXTINF:-1 group-title="Джаз, классика и релакс",Радио Эрмитаж (Санкт-Петербург)
+https://hermitage.hostingradio.ru/hermitage128.mp3
+#EXTINF:-1 group-title="Джаз, классика и релакс",Радио Орфей (академическая классика)
+http://orfeyfm.hostingradio.ru:8034/orfeyfm128.mp3
+#EXTINF:-1 group-title="Джаз, классика и релакс",Радио Книга
+http://bookradio.hostingradio.ru:8069/fm
+#EXTINF:-1 group-title="Джаз, классика и релакс",Радио ВЕРА
+http://radiovera.hostingradio.ru:8007/radiovera_128
+
+# --- Разговорное и новости ---
+#EXTINF:-1 group-title="Разговорное и новости",Соловьёв FM (Соловьев LIVE)
+https://solovievfm.hostingradio.ru/solovievfm128.aacp
+#EXTINF:-1 group-title="Разговорное и новости",Коммерсантъ FM
+http://kommersant77.hostingradio.ru:8016/kommersant128.mp3
+#EXTINF:-1 group-title="Разговорное и новости",Комсомольская правда
+http://kpradio.hostingradio.ru:8000/128
+#EXTINF:-1 group-title="Разговорное и новости",Бизнес FM
+https://bfm.hostingradio.ru:9075/fm
+
+# --- Шансон ---
+#EXTINF:-1 group-title="Шансон",Радио Шансон
+https://chanson.hostingradio.ru:8041/chanson128.mp3

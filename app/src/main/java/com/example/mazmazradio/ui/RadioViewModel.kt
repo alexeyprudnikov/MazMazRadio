@@ -33,7 +33,8 @@ sealed class RadioUiState {
 
 class RadioViewModel : ViewModel() {
 
-    private val parser = M3uParser()
+    private var appContext: Context? = null
+    private var parser = M3uParser()
     private var favoritesRepository: FavoritesRepository? = null
     private var sharedPreferences: android.content.SharedPreferences? = null
 
@@ -63,11 +64,12 @@ class RadioViewModel : ViewModel() {
 
     private var sleepTimerJob: Job? = null
 
-    init {
-        loadAllPresetPlaylists()
-    }
-
     fun initMediaController(context: Context) {
+        // Источник может лежать в assets — парсеру нужен контекст.
+        if (appContext == null) {
+            appContext = context.applicationContext
+            parser = M3uParser(appContext)
+        }
         if (sharedPreferences == null) {
             sharedPreferences = context.getSharedPreferences("radio_prefs", Context.MODE_PRIVATE)
         }
@@ -79,6 +81,8 @@ class RadioViewModel : ViewModel() {
                 updateUiStateWithFavorites()
             }
         }
+        ensurePlaylistsLoaded()
+
         if (mediaController != null) return
         val sessionToken = SessionToken(context, ComponentName(context, RadioService::class.java))
         controllerFuture = MediaController.Builder(context, sessionToken).buildAsync()
@@ -86,6 +90,13 @@ class RadioViewModel : ViewModel() {
             mediaController = controllerFuture?.get()
             setupPlayerListener()
         }, MoreExecutors.directExecutor())
+    }
+
+    /** Станции ещё не загружены (например, парсер ждал контекст) — грузим. */
+    fun ensurePlaylistsLoaded() {
+        if (rawStationsList.isEmpty() && _uiState.value is RadioUiState.Loading) {
+            loadAllPresetPlaylists()
+        }
     }
 
     private fun setupPlayerListener() {
@@ -113,7 +124,10 @@ class RadioViewModel : ViewModel() {
 
             kotlinx.coroutines.withContext(Dispatchers.Main) {
                 if (allStations.isEmpty()) {
-                    _uiState.value = RadioUiState.Error("Не удалось загрузить станции из плейлистов. Проверьте подключение к сети.")
+                    _uiState.value = RadioUiState.Error(
+                        "Не удалось загрузить плейлист. Проверьте, что источник доступен: " +
+                            AppConfig.PRESET_PLAYLISTS.joinToString { it.url }
+                    )
                 } else {
                     rawStationsList = allStations
                     updateUiStateWithFavorites()
@@ -194,11 +208,12 @@ class RadioViewModel : ViewModel() {
         // 3. Избранное выводим только если поиск пустой или если среди найденного есть избранные
         val favoritesList = filteredList.filter { it.isFavorite }
         if (favoritesList.isNotEmpty() && query.isEmpty()) {
-            categoriesMap["★ Избранное"] = favoritesList
+            categoriesMap[Categories.FAVORITES] = favoritesList
         }
 
-        // 4. Группируем по категориям
+        // 4. Группируем по категориям и расставляем их в порядке Categories.ORDER
         val groupedByCategory = filteredList.groupBy { it.category }
+            .toSortedMap(compareBy({ Categories.rank(it) }, { it }))
         categoriesMap.putAll(groupedByCategory)
 
         val newState = RadioUiState.Success(categoriesMap)

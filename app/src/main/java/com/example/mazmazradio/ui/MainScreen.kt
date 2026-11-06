@@ -21,7 +21,6 @@ import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.NightlightRound
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.StarBorder
@@ -90,12 +89,9 @@ fun MainScreen(viewModel: RadioViewModel) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.Radio,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
+                                // Иконка приложения (тот же мотив, что у лаунчера)
+                                AppLogo(modifier = Modifier.size(30.dp))
+                                Spacer(modifier = Modifier.width(10.dp))
                                 Text(
                                     "MAZMAZ RADIO",
                                     fontWeight = FontWeight.Bold,
@@ -347,11 +343,7 @@ fun StationCard(
                 .fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            StationLogo(
-                logoUrl = station.logoUrl,
-                contentDescription = station.title,
-                modifier = Modifier.size(52.dp)
-            )
+            StationLogo(modifier = Modifier.size(52.dp))
 
             Spacer(modifier = Modifier.width(14.dp))
 
@@ -411,11 +403,7 @@ fun MiniPlayer(
                 .fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            StationLogo(
-                logoUrl = station.logoUrl,
-                contentDescription = station.title,
-                modifier = Modifier.size(40.dp)
-            )
+            StationLogo(modifier = Modifier.size(40.dp))
 
             Spacer(modifier = Modifier.width(12.dp))
 
@@ -472,11 +460,25 @@ fun FullPlayerView(
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        StationLogo(
-            logoUrl = station.logoUrl,
-            contentDescription = station.title,
-            modifier = Modifier.size(220.dp)
-        )
+        // Шапка плеера: значок + вордмарк, как в TopAppBar списка станций.
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            AppLogo(modifier = Modifier.size(20.dp))
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = "MAZMAZ RADIO",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 2.sp,
+                color = Color.Gray
+            )
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        StationLogo(modifier = Modifier.size(220.dp))
 
         Spacer(modifier = Modifier.height(32.dp))
 
