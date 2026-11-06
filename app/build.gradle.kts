@@ -66,3 +66,12 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     debugImplementation(libs.androidx.compose.ui.tooling)
 }
+
+// Проверка живости потоков из плейлиста: отдельная задача, потому что ей нужен
+// доступ в сеть, а обычным тестам — нет.
+tasks.register<Exec>("checkPlaylist") {
+    group = "verification"
+    description = "Проверяет, что все потоки из assets-плейлиста отвечают (нужна сеть)."
+    workingDir = rootProject.projectDir
+    commandLine("bash", "tools/check_streams.sh")
+}

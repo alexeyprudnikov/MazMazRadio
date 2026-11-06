@@ -2,6 +2,7 @@ package com.example.mazmazradio
 
 import com.example.mazmazradio.data.Categories
 import com.example.mazmazradio.data.M3uParser
+import com.example.mazmazradio.data.StationKey
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -93,6 +94,18 @@ class PlaylistTest {
         )
         assertEquals(1, parsed.size)
         assertEquals(Categories.DEFAULT, parsed.single().category)
+    }
+
+    @Test
+    fun `every station has its own key`() {
+        // Избранное и «последняя станция» ключуются StationKey: если два разных потока
+        // дают один ключ, добавление в избранное подсветит обе станции.
+        val keys = stations.map { StationKey.of(it.streamUrl) }
+        assertEquals(
+            "дубли ключей: " + keys.groupBy { it }.filterValues { it.size > 1 }.keys,
+            stations.size,
+            keys.distinct().size
+        )
     }
 
     @Test

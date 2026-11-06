@@ -6,23 +6,22 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.example.mazmazradio.data.*
 import com.example.mazmazradio.service.RadioService
+import com.example.mazmazradio.service.SleepTimer
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.Dispatchers
-import kotlin.time.Duration.Companion.milliseconds
 import androidx.core.content.edit
 
 sealed class RadioUiState {
@@ -59,10 +58,12 @@ class RadioViewModel : ViewModel() {
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
-    private val _sleepTimerRemainingMinutes = MutableStateFlow<Int?>(null)
-    val sleepTimerRemainingMinutes: StateFlow<Int?> = _sleepTimerRemainingMinutes.asStateFlow()
+    /** Человекочитаемая ошибка воспроизведения; `null` — всё в порядке. */
+    private val _playbackError = MutableStateFlow<String?>(null)
+    val playbackError: StateFlow<String?> = _playbackError.asStateFlow()
 
-    private var sleepTimerJob: Job? = null
+    /** Остаток таймера сна в секундах. */
+    val sleepTimerRemainingSeconds: StateFlow<Int?> = SleepTimer.remainingSeconds
 
     fun initMediaController(context: Context) {
         // Источник может лежать в assets — парсеру нужен контекст.
@@ -89,6 +90,7 @@ class RadioViewModel : ViewModel() {
         controllerFuture?.addListener({
             mediaController = controllerFuture?.get()
             setupPlayerListener()
+            syncPlaybackState()
         }, MoreExecutors.directExecutor())
     }
 
@@ -103,12 +105,26 @@ class RadioViewModel : ViewModel() {
         mediaController?.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 _isPlaying.value = isPlaying
+                if (isPlaying) _playbackError.value = null
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
                 _isBuffering.value = (playbackState == Player.STATE_BUFFERING)
+                if (playbackState == Player.STATE_READY) _playbackError.value = null
+            }
+
+            override fun onPlayerError(error: PlaybackException) {
+                // Переподключением занимается сервис (RadioService), здесь только показ.
+                _playbackError.value = describe(error)
             }
         })
+    }
+
+    /** Состояние плеера могло измениться, пока контроллера ещё не было. */
+    private fun syncPlaybackState() {
+        val controller = mediaController ?: return
+        _isPlaying.value = controller.isPlaying
+        _isBuffering.value = controller.playbackState == Player.STATE_BUFFERING
     }
 
     fun loadAllPresetPlaylists() {
@@ -132,7 +148,7 @@ class RadioViewModel : ViewModel() {
                     rawStationsList = allStations
                     updateUiStateWithFavorites()
 
-                    // Восстанавливаем последнюю станцию на паузе
+                    // Показываем станцию, на которой всё закончилось, но эфир не включаем.
                     restoreLastStation(allStations)
                 }
             }
@@ -140,11 +156,12 @@ class RadioViewModel : ViewModel() {
     }
 
     private fun restoreLastStation(stations: List<RadioStation>) {
-        val lastUrl = sharedPreferences?.getString("last_station_url", null) ?: return
-        val lastStation = stations.find { it.streamUrl == lastUrl }
-        if (lastStation != null) {
-            prepareStationWithoutAutoPlay(lastStation)
-        }
+        if (_currentStation.value != null) return
+        val lastKey = sharedPreferences?.getString(KEY_LAST_STATION, null)
+            // До ключей станций здесь лежал сырой URL.
+            ?: sharedPreferences?.getString("last_station_url", null)?.let { StationKey.of(it) }
+            ?: return
+        _currentStation.value = stations.firstOrNull { StationKey.of(it.streamUrl) == lastKey }
     }
 
     // Добавление / удаление из Избранного
@@ -159,39 +176,18 @@ class RadioViewModel : ViewModel() {
         updateUiStateWithFavorites()
     }
 
-    fun setSleepTimer(minutes: Int) {
-        sleepTimerJob?.cancel()
-        if (minutes <= 0) {
-            _sleepTimerRemainingMinutes.value = null
-            return
-        }
+    fun setSleepTimer(minutes: Int) = SleepTimer.arm(minutes)
 
-        _sleepTimerRemainingMinutes.value = minutes
-        sleepTimerJob = viewModelScope.launch {
-            var current = minutes
-            while (current > 0) {
-                delay(60_000L.milliseconds) // Ждем 1 минуту
-                current--
-                _sleepTimerRemainingMinutes.value = if (current > 0) current else null
-            }
-            // По истечении времени ставим на паузу
-            mediaController?.pause()
-        }
-    }
-
-    fun cancelSleepTimer() {
-        sleepTimerJob?.cancel()
-        _sleepTimerRemainingMinutes.value = null
-    }
+    fun cancelSleepTimer() = SleepTimer.cancel()
 
     // Вспомогательная функция группировки
     private fun updateUiStateWithFavorites() {
-        val favoriteUrls = favoritesRepository?.getFavoriteUrls() ?: emptySet()
+        val repo = favoritesRepository
         val query = _searchQuery.value.trim().lowercase()
 
         // 1. Проставляем флаги избранного
         val updatedList = rawStationsList.map { station ->
-            station.copy(isFavorite = favoriteUrls.contains(station.streamUrl))
+            station.copy(isFavorite = repo?.isFavorite(station.streamUrl) == true)
         }
 
         // 2. Фильтруем по поисковому запросу
@@ -222,56 +218,86 @@ class RadioViewModel : ViewModel() {
 
     fun playStation(station: RadioStation) {
         _currentStation.value = station
-        saveLastStationUrl(station.streamUrl)
+        _playbackError.value = null
+        saveLastStation(station)
 
         mediaController?.run {
-            val metadata = MediaMetadata.Builder()
-                .setTitle(station.title)
-                .setArtist("Online Radio")
-                .build()
-
-            val mediaItem = MediaItem.Builder()
-                .setUri(station.streamUrl)
-                .setMediaMetadata(metadata)
-                .build()
-
-            setMediaItem(mediaItem)
+            setMediaItem(mediaItemOf(station))
             prepare()
             play()
         }
     }
 
-    private fun prepareStationWithoutAutoPlay(station: RadioStation) {
-        _currentStation.value = station
-        mediaController?.run {
-            val metadata = MediaMetadata.Builder()
-                .setTitle(station.title)
-                .setArtist("Online Radio")
-                .build()
-
-            val mediaItem = MediaItem.Builder()
-                .setUri(station.streamUrl)
-                .setMediaMetadata(metadata)
-                .build()
-
-            setMediaItem(mediaItem)
-            prepare() // Только подготавливаем поток, без play()
-        }
-    }
-
-    private fun saveLastStationUrl(url: String) {
-        sharedPreferences?.edit(commit = false) {
-            putString("last_station_url", url)
+    /**
+     * Повтор после ошибки: сервис уже исчерпал автоповтор, а ручная кнопка
+     * должна работать всегда, поэтому готовим поток прямо отсюда.
+     */
+    fun retryNow() {
+        _playbackError.value = null
+        mediaController?.let { controller ->
+            if (controller.mediaItemCount == 0) {
+                _currentStation.value?.let { playStation(it) }
+            } else {
+                controller.prepare()
+                controller.play()
+            }
         }
     }
 
     fun togglePlayPause() {
-        mediaController?.let { controller ->
-            if (controller.isPlaying) controller.pause() else controller.play()
+        val controller = mediaController ?: return
+        if (controller.mediaItemCount == 0) {
+            // После холодного старта станция показана, но поток не подготовлен.
+            _currentStation.value?.let { playStation(it) }
+            return
         }
+        if (controller.isPlaying) controller.pause() else controller.play()
+    }
+
+    private fun mediaItemOf(station: RadioStation): MediaItem {
+        val metadata = MediaMetadata.Builder()
+            .setTitle(station.title)
+            .setArtist("Online Radio")
+            .build()
+
+        return MediaItem.Builder()
+            .setUri(station.streamUrl)
+            .setMediaMetadata(metadata)
+            .build()
+    }
+
+    private fun saveLastStation(station: RadioStation) {
+        val key = StationKey.of(station.streamUrl)
+        sharedPreferences?.edit(commit = false) {
+            putString(KEY_LAST_STATION, key)
+        }
+    }
+
+    private fun describe(error: PlaybackException): String = when (error.errorCode) {
+        PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+        PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ->
+            "Нет сети — эфир не отвечает"
+
+        PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS,
+        PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND ->
+            "Поток недоступен (${error.errorCodeName})"
+
+        PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW ->
+            "Отстали от прямого эфира — переподключаемся"
+
+        PlaybackException.ERROR_CODE_DECODING_FAILED,
+        PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
+        PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED ->
+            "Поток сломан или не аудио (${error.errorCodeName})"
+
+        else -> "Не удалось включить эфир (${error.errorCodeName})"
     }
 
     override fun onCleared() {
         controllerFuture?.let { MediaController.releaseFuture(it) }
+    }
+
+    private companion object {
+        const val KEY_LAST_STATION = "last_station_key"
     }
 }

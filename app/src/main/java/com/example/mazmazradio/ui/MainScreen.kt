@@ -1,5 +1,11 @@
 package com.example.mazmazradio.ui
 
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.*
 import androidx.compose.animation.expandVertically
@@ -30,10 +36,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import com.example.mazmazradio.data.RadioStation
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -45,7 +53,35 @@ fun MainScreen(viewModel: RadioViewModel) {
     val currentStation by viewModel.currentStation.collectAsState()
 
     val searchQuery by viewModel.searchQuery.collectAsState()
-    val remainingTimer by viewModel.sleepTimerRemainingMinutes.collectAsState()
+    val remainingSeconds by viewModel.sleepTimerRemainingSeconds.collectAsState()
+    val playbackError by viewModel.playbackError.collectAsState()
+
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    // Разрешение на уведомления спрашиваем в момент, когда оно реально нужно — при первом
+    // запуске эфира: без него на Android 13+ система молча не покажет кнопки управления.
+    val context = LocalContext.current
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { /* отказ отнимает только уведомление, само радио работает */ }
+
+    LaunchedEffect(isPlaying) {
+        if (isPlaying && !hasNotificationPermission(context)) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
+    // Ошибка воспроизведения: показываем и даём ручную повторную попытку
+    // (автоповтор в сервисе к этому моменту уже исчерпан).
+    LaunchedEffect(playbackError) {
+        val message = playbackError ?: return@LaunchedEffect
+        val result = snackbarHostState.showSnackbar(
+            message = message,
+            actionLabel = "Повторить",
+            withDismissAction = true
+        )
+        if (result == SnackbarResult.ActionPerformed) viewModel.retryNow()
+    }
 
     var showFullPlayer by remember { mutableStateOf(false) }
     var isSearchActive by remember { mutableStateOf(false) }
@@ -56,6 +92,7 @@ fun MainScreen(viewModel: RadioViewModel) {
         color = MaterialTheme.colorScheme.background
     ) {
         Scaffold(
+            snackbarHost = { SnackbarHost(snackbarHostState) },
             topBar = {
                 TopAppBar(
                     title = {
@@ -108,15 +145,15 @@ fun MainScreen(viewModel: RadioViewModel) {
                             IconButton(onClick = { showSleepTimerDialog = true }) {
                                 BadgedBox(
                                     badge = {
-                                        if (remainingTimer != null) {
-                                            Badge { Text("${remainingTimer}m") }
+                                        remainingSeconds?.let { seconds ->
+                                            Badge { Text("${(seconds + 59) / 60}m") }
                                         }
                                     }
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.NightlightRound,
                                         contentDescription = "Таймер сна",
-                                        tint = if (remainingTimer != null) MaterialTheme.colorScheme.primary else LocalContentColor.current
+                                        tint = if (remainingSeconds != null) MaterialTheme.colorScheme.primary else LocalContentColor.current
                                     )
                                 }
                             }
@@ -133,6 +170,7 @@ fun MainScreen(viewModel: RadioViewModel) {
                         station = station,
                         isPlaying = isPlaying,
                         isBuffering = isBuffering,
+                        hasError = playbackError != null,
                         onPlayPauseClick = { viewModel.togglePlayPause() },
                         onBarClick = { showFullPlayer = true }
                     )
@@ -178,7 +216,7 @@ fun MainScreen(viewModel: RadioViewModel) {
 
         if (showSleepTimerDialog) {
             SleepTimerDialog(
-                currentTimerMinutes = remainingTimer,
+                currentTimerSeconds = remainingSeconds,
                 onSelectOption = { minutes ->
                     viewModel.setSleepTimer(minutes)
                     showSleepTimerDialog = false
@@ -200,7 +238,8 @@ fun MainScreen(viewModel: RadioViewModel) {
                     station = currentStation!!,
                     isPlaying = isPlaying,
                     isBuffering = isBuffering,
-                    remainingTimer = remainingTimer,
+                    hasError = playbackError != null,
+                    remainingSeconds = remainingSeconds,
                     onPlayPauseClick = { viewModel.togglePlayPause() },
                     onOpenTimerDialog = { showSleepTimerDialog = true }
                 )
@@ -385,6 +424,7 @@ fun MiniPlayer(
     station: RadioStation,
     isPlaying: Boolean,
     isBuffering: Boolean,
+    hasError: Boolean,
     onPlayPauseClick: () -> Unit,
     onBarClick: () -> Unit
 ) {
@@ -415,9 +455,17 @@ fun MiniPlayer(
                     maxLines = 1
                 )
                 Text(
-                    text = if (isBuffering) "Буферизация..." else "ПРЯМОЙ ЭФИР",
+                    text = when {
+                        hasError -> "Эфир оборвался"
+                        isBuffering -> "Буферизация..."
+                        else -> "ПРЯМОЙ ЭФИР"
+                    },
                     style = MaterialTheme.typography.labelSmall,
-                    color = if (isBuffering) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary
+                    color = when {
+                        hasError -> MaterialTheme.colorScheme.error
+                        isBuffering -> MaterialTheme.colorScheme.tertiary
+                        else -> MaterialTheme.colorScheme.primary
+                    }
                 )
             }
 
@@ -427,7 +475,7 @@ fun MiniPlayer(
                     .background(MaterialTheme.colorScheme.primary, CircleShape)
                     .size(42.dp)
             ) {
-                if (isBuffering) {
+                if (isBuffering && !hasError) {
                     CircularProgressIndicator(
                         modifier = Modifier.size(20.dp),
                         color = MaterialTheme.colorScheme.onPrimary,
@@ -450,7 +498,8 @@ fun FullPlayerView(
     station: RadioStation,
     isPlaying: Boolean,
     isBuffering: Boolean,
-    remainingTimer: Int?,
+    hasError: Boolean,
+    remainingSeconds: Int?,
     onPlayPauseClick: () -> Unit,
     onOpenTimerDialog: () -> Unit
 ) {
@@ -501,7 +550,20 @@ fun FullPlayerView(
         OutlinedButton(onClick = onOpenTimerDialog) {
             Icon(Icons.Default.NightlightRound, contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(modifier = Modifier.width(8.dp))
-            Text(if (remainingTimer != null) "Таймер: $remainingTimer мин." else "Таймер сна")
+            Text(
+                remainingSeconds?.let { "Таймер: ${formatClock(it)}" } ?: "Таймер сна"
+            )
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        if (hasError) {
+            Text(
+                text = "Эфир оборвался — нажмите на кнопку, чтобы попробовать снова",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.error
+            )
+            Spacer(modifier = Modifier.height(8.dp))
         }
 
         Spacer(modifier = Modifier.height(20.dp))
@@ -512,7 +574,7 @@ fun FullPlayerView(
                 .size(72.dp)
                 .background(MaterialTheme.colorScheme.primary, CircleShape)
         ) {
-            if (isBuffering) {
+            if (isBuffering && !hasError) {
                 CircularProgressIndicator(color = Color.White)
             } else {
                 Icon(
@@ -564,7 +626,7 @@ fun EqualizerAnimation() {
 
 @Composable
 fun SleepTimerDialog(
-    currentTimerMinutes: Int?,
+    currentTimerSeconds: Int?,
     onSelectOption: (Int) -> Unit,
     onCancelTimer: () -> Unit,
     onDismiss: () -> Unit
@@ -576,9 +638,9 @@ fun SleepTimerDialog(
         title = { Text("Таймер сна") },
         text = {
             Column {
-                if (currentTimerMinutes != null) {
+                if (currentTimerSeconds != null) {
                     Text(
-                        "Осталось: $currentTimerMinutes мин.",
+                        "Осталось: ${formatClock(currentTimerSeconds)}",
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Bold
@@ -596,7 +658,7 @@ fun SleepTimerDialog(
             }
         },
         confirmButton = {
-            if (currentTimerMinutes != null) {
+            if (currentTimerSeconds != null) {
                 TextButton(onClick = onCancelTimer) {
                     Text("Сбросить таймер", color = MaterialTheme.colorScheme.error)
                 }
@@ -609,3 +671,18 @@ fun SleepTimerDialog(
         }
     )
 }
+
+/** Остаток таймера в виде м:сс. */
+private fun formatClock(totalSeconds: Int): String =
+    "%d:%02d".format(totalSeconds / 60, totalSeconds % 60)
+
+/**
+ * Разрешение на уведомления нужно только с Android 13; до него Media3 показывает
+ * уведомление о воспроизведении самовольно.
+ */
+private fun hasNotificationPermission(context: Context): Boolean =
+    Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+        ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.POST_NOTIFICATIONS
+        ) == PackageManager.PERMISSION_GRANTED
